@@ -17,6 +17,6 @@ test("writes the README screenshots", async ({ page }) => {
   await page.screenshot({ path: fileURLToPath(new URL("playground.png", DOCS_DIR)), fullPage: true });
 
   await page.getByRole("button", { name: "ReDoS (a+)+b" }).click();
-  await expect(page.getByTestId("native-result")).toHaveText(/Skipped/);
+  await expect(page.getByTestId("native-result")).toHaveText(/timed out/, { timeout: 10_000 });
   await page.screenshot({ path: fileURLToPath(new URL("redos.png", DOCS_DIR)), fullPage: true });
 });

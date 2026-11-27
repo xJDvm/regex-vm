@@ -25,8 +25,14 @@ export interface MatchSummary {
 /** Outcome of a run by regex-vm. */
 export type LibraryOutcome = { kind: "match"; match: MatchSummary } | { kind: "none" };
 
-/** Outcome of a run by the native `RegExp`, which is skipped for patterns that backtrack exponentially. */
-export type NativeOutcome = LibraryOutcome | { kind: "skipped" };
+/**
+ * Outcome of a run by the native `RegExp`: a result like regex-vm's, a pattern that V8 rejects, or a run that was
+ * cut off because V8 backtracked for too long.
+ */
+export type NativeOutcome =
+  | LibraryOutcome
+  | { kind: "rejected"; message: string }
+  | { kind: "timeout" };
 
 /** One row of the capture table. */
 export interface CaptureRow {
@@ -38,10 +44,10 @@ export interface CaptureRow {
   text: string | undefined;
 }
 
-/** Whether the two engines agree, or `unchecked` when the native engine was skipped. */
+/** Whether the two engines agree, or `unchecked` when the native engine did not produce a result. */
 export type Verdict = "agree" | "differ" | "unchecked";
 
-/** Everything the playground shows for one pattern and test string. */
+/** Everything the playground shows for one pattern and test string, except the native comparison. */
 export type Analysis =
   | { ok: false; message: string; position: number }
   | {
@@ -54,21 +60,18 @@ export type Analysis =
       /** Positioned NFA graph of the program. */
       graph: GraphLayout;
       library: LibraryOutcome;
-      native: NativeOutcome;
-      verdict: Verdict;
     };
 
 /**
- * Compiles `pattern`, runs it on `input` with regex-vm and, unless `skipNative` is set, with the native `RegExp`, then
- * compares the two results.
+ * Compiles `pattern` and runs it on `input` with regex-vm. The native `RegExp` is not involved: its comparison runs
+ * separately, in a worker with a timeout, so that this function stays synchronous.
  *
  * @param pattern - Pattern text, without slashes or flags.
  * @param input - Test string, at most {@link MAX_INPUT_LENGTH} code units.
- * @param skipNative - Set for patterns on which the native engine would backtrack exponentially.
  * @returns The analysis, or the syntax error that stopped compilation.
  * @throws {RangeError} When `input` is longer than {@link MAX_INPUT_LENGTH}.
  */
-export function analyze(pattern: string, input: string, skipNative: boolean): Analysis {
+export function analyze(pattern: string, input: string): Analysis {
   if (input.length > MAX_INPUT_LENGTH) {
     throw new RangeError(`input is longer than ${MAX_INPUT_LENGTH} code units`);
   }
@@ -84,7 +87,6 @@ export function analyze(pattern: string, input: string, skipNative: boolean): An
   const matched = regex.exec(input);
   const library: LibraryOutcome =
     matched === null ? { kind: "none" } : { kind: "match", match: summarize(matched) };
-  const native: NativeOutcome = skipNative ? { kind: "skipped" } : runNative(pattern, input);
   return {
     ok: true,
     bytecode: disassemble(regex.program).split("\n"),
@@ -92,25 +94,12 @@ export function analyze(pattern: string, input: string, skipNative: boolean): An
     steps: [...trace(regex.program, input)],
     graph: layoutGraph(regex.program),
     library,
-    native,
-    verdict: verdictOf(library, native),
   };
 }
 
 /** Reduces a regex-vm match to the fields shared with the native engine. */
 function summarize(match: Match): MatchSummary {
   return { index: match.index, end: match.end, groups: match.groups };
-}
-
-/** Runs the native engine and reports its match in the same shape as regex-vm. */
-function runNative(pattern: string, input: string): NativeOutcome {
-  const matched = new RegExp(pattern).exec(input);
-  if (matched === null) return { kind: "none" };
-  const whole = matched[0] ?? "";
-  return {
-    kind: "match",
-    match: { index: matched.index, end: matched.index + whole.length, groups: [...matched] },
-  };
 }
 
 /** Builds the capture table for a regex-vm match, labelling each group with its name when it has one. */
@@ -126,9 +115,17 @@ function captureRows(match: Match, regex: Regex): CaptureRow[] {
   });
 }
 
-/** Compares the two engines: `agree`, `differ`, or `unchecked` when the native engine did not run. */
-function verdictOf(library: LibraryOutcome, native: NativeOutcome): Verdict {
-  if (native.kind === "skipped") return "unchecked";
+/**
+ * Compares regex-vm with the native engine. A timed-out run is `unchecked`; a pattern that V8 rejects but regex-vm
+ * accepted is a `differ`, because the two engines do not accept the same language.
+ *
+ * @param library - The regex-vm outcome.
+ * @param native - The native outcome.
+ * @returns The verdict.
+ */
+export function verdictOf(library: LibraryOutcome, native: NativeOutcome): Verdict {
+  if (native.kind === "timeout") return "unchecked";
+  if (native.kind === "rejected") return "differ";
   return sameOutcome(library, native) ? "agree" : "differ";
 }
 

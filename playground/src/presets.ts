@@ -6,8 +6,6 @@ export interface Preset {
   readonly pattern: string;
   /** Test string; at most 200 code units. */
   readonly input: string;
-  /** Set when the native `RegExp` backtracks exponentially on this pattern, so the playground must not run it. */
-  readonly catastrophic?: true;
 }
 
 /** The examples offered by the playground. */
@@ -36,16 +34,5 @@ export const PRESETS: readonly Preset[] = [
     name: "ReDoS (a+)+b",
     pattern: "(a+)+b",
     input: "a".repeat(64),
-    catastrophic: true,
   },
 ];
-
-/**
- * Whether `pattern` is one of the presets that must not be run on the native engine.
- *
- * @param pattern - Pattern text as typed by the user.
- * @returns `true` when the pattern text equals a catastrophic preset's pattern.
- */
-export function isCatastrophic(pattern: string): boolean {
-  return PRESETS.some((preset) => preset.catastrophic === true && preset.pattern === pattern);
-}

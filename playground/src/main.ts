@@ -6,8 +6,10 @@ import {
   MAX_INPUT_LENGTH,
   type NativeOutcome,
   type Verdict,
+  verdictOf,
 } from "./analyze.ts";
-import { isCatastrophic, PRESETS, type Preset } from "./presets.ts";
+import { type NativeComparison, startNativeComparison } from "./native-comparison.ts";
+import { PRESETS, type Preset } from "./presets.ts";
 import { drawGraph, highlightGraph } from "./render-graph.ts";
 import type { Step, TraceThread } from "../../src/index.ts";
 
@@ -20,7 +22,7 @@ const BASE_INTERVAL_MS = 600;
 const VERDICT_TEXT: Record<Verdict, string> = {
   agree: "Agrees with the native RegExp.",
   differ: "Differs from the native RegExp.",
-  unchecked: "Not compared: the native RegExp is skipped for this pattern.",
+  unchecked: "Not compared: the native RegExp did not produce a result in time.",
 };
 
 /** An analysis of a pattern that compiled, together with the test string it ran on. */
@@ -57,6 +59,8 @@ let loaded: Loaded | undefined;
 let cursor = 0;
 /** Handle of the playback timer, or `undefined` while paused. */
 let timer: number | undefined;
+/** The native comparison of the current inputs, which the next edit cancels. */
+let comparison: NativeComparison | undefined;
 
 for (const preset of PRESETS) presetList.append(presetButton(preset));
 patternInput.addEventListener("input", refresh);
@@ -121,13 +125,43 @@ function loadPreset(preset: Preset): void {
   refresh();
 }
 
-/** Re-analyses the current inputs and redraws every panel. Playback stops and returns to the first step. */
+/**
+ * Re-analyses the current inputs and redraws every panel. Playback stops and returns to the first step. The native
+ * comparison runs after the redraw, so the regex-vm panels never wait for it.
+ */
 function refresh(): void {
   const pattern = patternInput.value;
   const input = testInput.value;
   counter.textContent = `${input.length} / ${MAX_INPUT_LENGTH}`;
   stopPlayback();
-  render(pattern, input, analyze(pattern, input, isCatastrophic(pattern)));
+  comparison?.cancel();
+  const analysis = analyze(pattern, input);
+  render(pattern, input, analysis);
+  if (analysis.ok) compareNatively(pattern, input, analysis.library);
+}
+
+/**
+ * Runs the native `RegExp` in a worker and shows its outcome when it arrives. The worker is terminated on timeout, so a
+ * catastrophic pattern leaves the page usable and reports `unchecked`.
+ */
+function compareNatively(pattern: string, input: string, library: LibraryOutcome): void {
+  nativeResult.textContent = "Running the native RegExp…";
+  verdictLine.textContent = "";
+  const running = startNativeComparison(pattern, input);
+  comparison = running;
+  void running.outcome.then(
+    (native) => showNative(native, library),
+    (error: Error) => {
+      nativeResult.textContent = `native: unavailable: ${error.message}`;
+      verdictLine.textContent = VERDICT_TEXT.unchecked;
+    },
+  );
+}
+
+/** Shows the native outcome and the verdict it gives against regex-vm. */
+function showNative(native: NativeOutcome, library: LibraryOutcome): void {
+  nativeResult.textContent = describe(native);
+  verdictLine.textContent = VERDICT_TEXT[verdictOf(library, native)];
 }
 
 /** Redraws every output panel for one analysis. */
@@ -143,8 +177,6 @@ function render(pattern: string, input: string, analysis: Analysis): void {
     scrubber.max = String(analysis.steps.length - 1);
     setExecutionEnabled(true);
     libraryResult.textContent = describe(analysis.library);
-    nativeResult.textContent = describe(analysis.native);
-    verdictLine.textContent = VERDICT_TEXT[analysis.verdict];
     showStep(0);
     return;
   }
@@ -286,12 +318,14 @@ function captureLine(capture: CaptureRow): HTMLTableRowElement {
 }
 
 /** Describes one engine outcome in a single line. */
-function describe(outcome: LibraryOutcome | NativeOutcome): string {
+function describe(outcome: NativeOutcome): string {
   switch (outcome.kind) {
     case "none":
       return "No match.";
-    case "skipped":
-      return "Skipped: the native RegExp backtracks exponentially on this pattern.";
+    case "timeout":
+      return "native: timed out (catastrophic backtracking under V8)";
+    case "rejected":
+      return `native: rejected pattern: ${outcome.message}`;
     case "match": {
       const { index, end, groups } = outcome.match;
       return `Match [${index}, ${end}) ${JSON.stringify(groups[0] ?? "")}`;

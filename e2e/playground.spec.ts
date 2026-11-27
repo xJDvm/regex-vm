@@ -1,5 +1,8 @@
 import { expect, type Locator, type Page, test } from "@playwright/test";
 
+/** Upper bound, in milliseconds, for the native comparison to report: the worker timeout plus start-up. */
+const NATIVE_TIMEOUT = 10_000;
+
 /** Clicks the Step button `count` times. */
 async function stepTimes(page: Page, count: number): Promise<void> {
   for (let i = 0; i < count; i++) await page.getByTestId("step").click();
@@ -38,8 +41,23 @@ test.describe("playground", () => {
     const libraryResult = page.getByTestId("match-result");
     const nativeResult = page.getByTestId("native-result");
     await expect(libraryResult).toHaveText('Match [1, 6) "abcbd"');
+    await expect(nativeResult).toHaveText('Match [1, 6) "abcbd"', { timeout: NATIVE_TIMEOUT });
     expect(await textOf(libraryResult)).toBe(await textOf(nativeResult));
     await expect(page.getByText("Agrees with the native RegExp.")).toBeVisible();
+  });
+
+  test("stays responsive on a catastrophic pattern and reports the native timeout", async ({ page }) => {
+    await load(page, "(a|a)+b", "a".repeat(200));
+    await expect(page.getByTestId("match-result")).toHaveText("No match.");
+
+    await expect(page.getByTestId("native-result")).toHaveText(
+      "native: timed out (catastrophic backtracking under V8)",
+      { timeout: NATIVE_TIMEOUT },
+    );
+    await expect(page.getByText("Not compared: the native RegExp did not produce a result in time.")).toBeVisible();
+
+    await stepTimes(page, 2);
+    await expect(page.getByTestId("step-pos")).toHaveText("Position 2 of 200");
   });
 
   test("shows a caret under the position of a syntax error", async ({ page }) => {
