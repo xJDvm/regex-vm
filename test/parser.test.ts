@@ -1,6 +1,7 @@
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 import type { Node, Span } from "../src/ast.js";
+import { negate, normalize, SPACE, WORD } from "../src/charclass.js";
 import { RegexSyntaxError } from "../src/errors.js";
 import { parse } from "../src/parser.js";
 
@@ -31,6 +32,7 @@ function childrenOf(node: Node): readonly Node[] {
     case "alt":
       return node.alts;
     case "group":
+    case "repeat":
       return [node.body];
     default:
       return [];
@@ -325,6 +327,161 @@ describe("parse: accepted syntax", () => {
     expect(parse("[.[]").ast).toMatchObject({ type: "class", ranges: [[46, 46], [91, 91]] });
   });
 
+  it.each([
+    ["a*", 0, Infinity, true, 2],
+    ["a+", 1, Infinity, true, 2],
+    ["a?", 0, 1, true, 2],
+    ["a{2}", 2, 2, true, 4],
+    ["a{0}", 0, 0, true, 4],
+    ["a{2,}", 2, Infinity, true, 5],
+    ["a{2,5}", 2, 5, true, 6],
+    ["a{1000,1000}", 1000, 1000, true, 12],
+    ["a*?", 0, Infinity, false, 3],
+    ["a+?", 1, Infinity, false, 3],
+    ["a??", 0, 1, false, 3],
+    ["a{2,5}?", 2, 5, false, 7],
+    ["a{2,}?", 2, Infinity, false, 6],
+  ])("parses %j as a repeat with min %i, max %s, greedy %s", (pattern, min, max, greedy, end) => {
+    expect(parse(pattern).ast).toEqual({
+      type: "repeat",
+      body: char("a", 0),
+      min,
+      max,
+      greedy,
+      start: 0,
+      end,
+    });
+  });
+
+  it("binds a quantifier to the preceding atom only", () => {
+    expect(parse("ab*").ast).toEqual({
+      type: "seq",
+      items: [
+        char("a", 0),
+        { type: "repeat", body: char("b", 1), min: 0, max: Infinity, greedy: true, start: 1, end: 3 },
+      ],
+      start: 0,
+      end: 3,
+    });
+  });
+
+  it("quantifies a whole group", () => {
+    expect(parse("(ab)+").ast).toEqual({
+      type: "repeat",
+      body: {
+        type: "group",
+        index: 1,
+        name: null,
+        body: {
+          type: "seq",
+          items: [char("a", 1), char("b", 2)],
+          start: 1,
+          end: 3,
+        },
+        start: 0,
+        end: 4,
+      },
+      min: 1,
+      max: Infinity,
+      greedy: true,
+      start: 0,
+      end: 5,
+    });
+  });
+
+  it("quantifies a class and a dot", () => {
+    expect(parse("[a]{3}").ast).toMatchObject({ type: "repeat", body: { type: "class" }, min: 3, max: 3, end: 6 });
+    expect(parse(".*").ast).toMatchObject({ type: "repeat", body: { type: "any" }, min: 0, max: Infinity });
+  });
+
+  it("applies a quantifier to the last alternative's atom only", () => {
+    expect(parse("a|b*").ast).toEqual({
+      type: "alt",
+      alts: [
+        char("a", 0),
+        { type: "repeat", body: char("b", 2), min: 0, max: Infinity, greedy: true, start: 2, end: 4 },
+      ],
+      start: 0,
+      end: 4,
+    });
+  });
+
+  it("parses a quantified group inside a quantified group", () => {
+    expect(parse("(?:a{2})+").ast).toMatchObject({
+      type: "repeat",
+      min: 1,
+      start: 0,
+      end: 9,
+      body: {
+        type: "group",
+        body: { type: "repeat", min: 2, max: 2, start: 3, end: 7 },
+      },
+    });
+  });
+
+  it.each([
+    ["\\d", { ranges: [[48, 57]], negated: false }],
+    ["\\D", { ranges: [[48, 57]], negated: true }],
+    ["\\w", { ranges: normalize(WORD), negated: false }],
+    ["\\W", { ranges: normalize(WORD), negated: true }],
+    ["\\s", { ranges: normalize(SPACE), negated: false }],
+    ["\\S", { ranges: normalize(SPACE), negated: true }],
+  ])("parses the predefined class escape %s", (pattern, expected) => {
+    expect(parse(pattern).ast).toEqual({ type: "class", ...expected, start: 0, end: 2 });
+  });
+
+  it("parses the word boundary assertions", () => {
+    expect(parse("\\b").ast).toEqual({ type: "assert", kind: "wordB", start: 0, end: 2 });
+    expect(parse("\\B").ast).toEqual({ type: "assert", kind: "notWordB", start: 0, end: 2 });
+  });
+
+  it.each([
+    ["\\f", 12],
+    ["\\n", 10],
+    ["\\r", 13],
+    ["\\t", 9],
+    ["\\v", 11],
+    ["\\0", 0],
+    ["\\x41", 65],
+    ["\\xfF", 255],
+    ["\\u0041", 65],
+    ["\\uFFFF", 0xffff],
+    ["\\cA", 1],
+    ["\\cj", 10],
+    ["\\cZ", 26],
+  ])("decodes the character escape %s to code unit %i", (pattern, code) => {
+    expect(parse(pattern).ast).toEqual({ type: "char", code, start: 0, end: pattern.length });
+  });
+
+  it("parses a quantified escape", () => {
+    expect(parse("\\d+\\n{2}").ast).toEqual({
+      type: "seq",
+      items: [
+        { type: "repeat", body: { type: "class", ranges: [[48, 57]], negated: false, start: 0, end: 2 }, min: 1, max: Infinity, greedy: true, start: 0, end: 3 },
+        { type: "repeat", body: { type: "char", code: 10, start: 3, end: 5 }, min: 2, max: 2, greedy: true, start: 3, end: 8 },
+      ],
+      start: 0,
+      end: 8,
+    });
+  });
+
+  it.each([
+    ["[\\d]", [[48, 57]], false],
+    ["[\\D-]", [[0, 47], [58, 0xffff]], false],
+    ["[\\d-]", [[45, 45], [48, 57]], false],
+    ["[\\w\\s]", normalize([...WORD, ...SPACE]), false],
+    ["[^\\W]", negate(normalize(WORD)), true],
+    ["[\\b]", [[8, 8]], false],
+    ["[\\n\\t]", [[9, 10]], false],
+    ["[\\x41-\\x43]", [[65, 67]], false],
+    ["[\\u0041-Z]", [[65, 90]], false],
+    ["[\\-]", [[45, 45]], false],
+    ["[\\cJ]", [[10, 10]], false],
+    ["[\\0]", [[0, 0]], false],
+  ])("parses the class %s with ranges %j", (pattern, ranges, negated) => {
+    expect(parse(pattern).ast).toMatchObject({ type: "class", ranges, negated });
+  });
+
   it("accepts the maximum of 1 000 capture groups", () => {
     expect(parse("()".repeat(1000)).groupCount).toBe(1000);
   });
@@ -357,22 +514,70 @@ describe("parse: rejected syntax", () => {
     ["[a-", "unterminated character class", 0],
     ["[^", "unterminated character class", 0],
     ["[z-a]", "range out of order in character class", 1],
-    ["[a-\\d]", "unsupported escape '\\d'", 3],
-    ["*", "quantifiers are not supported yet", 0],
-    ["a*", "quantifiers are not supported yet", 1],
-    ["a+", "quantifiers are not supported yet", 1],
-    ["a?", "quantifiers are not supported yet", 1],
-    ["a{2}", "quantifiers are not supported yet", 1],
-    ["{", "quantifiers are not supported yet", 0],
+    ["[a-\\d]", "class escape cannot end a range", 3],
+    ["[\\d-a]", "class escape cannot start a range", 1],
+    ["[a-\\w-z]", "class escape cannot end a range", 3],
+    ["[\\B]", "unsupported escape '\\B'", 1],
+    ["[\\1]", "unsupported escape '\\1'", 1],
+    ["[\\k]", "unsupported escape '\\k'", 1],
+    ["[\\a]", "unsupported escape '\\a'", 1],
+    ["[\\", "\\ at end of pattern", 1],
+    ["*", "nothing to repeat", 0],
+    ["+", "nothing to repeat", 0],
+    ["?", "nothing to repeat", 0],
+    ["{1}", "nothing to repeat", 0],
+    ["{", "unmatched '{'", 0],
+    ["a{", "unmatched '{'", 1],
+    ["a{1", "unmatched '{'", 1],
+    ["a{1,", "unmatched '{'", 1],
+    ["a{,1}", "unmatched '{'", 1],
+    ["a{ 1}", "unmatched '{'", 1],
+    ["a{x}", "unmatched '{'", 1],
+    ["a{1}x{", "unmatched '{'", 5],
+    ["a**", "nothing to repeat", 2],
+    ["a*??", "nothing to repeat", 3],
+    ["a{2}{3}", "nothing to repeat", 4],
+    ["a+{2}", "nothing to repeat", 2],
+    ["a|*", "nothing to repeat", 2],
+    ["(*)", "nothing to repeat", 1],
+    ["(?:+)", "nothing to repeat", 3],
+    ["^*", "nothing to repeat", 1],
+    ["$+", "nothing to repeat", 1],
+    ["\\b?", "nothing to repeat", 2],
+    ["\\B{2}", "nothing to repeat", 2],
+    ["a{2,1}", "numbers out of order in quantifier", 1],
+    ["a{1001}", "repetition bound too large", 1],
+    ["a{0,1001}", "repetition bound too large", 1],
+    ["a{1001,}", "repetition bound too large", 1],
+    ["a{1001,1001}", "repetition bound too large", 1],
+    ["a{99999999999999999999999}", "repetition bound too large", 1],
+    ["a{1,99999999999999999999999}", "repetition bound too large", 1],
+    ["a{2000,1}", "repetition bound too large", 1],
     ["}", "unmatched '}'", 0],
     ["a}", "unmatched '}'", 1],
     ["]", "unmatched ']'", 0],
     ["\\", "\\ at end of pattern", 0],
     ["a\\", "\\ at end of pattern", 1],
-    ["\\d", "unsupported escape '\\d'", 0],
-    ["\\b", "unsupported escape '\\b'", 0],
-    ["\\1", "unsupported escape '\\1'", 0],
-    ["\\n", "unsupported escape '\\n'", 0],
+    ["\\1", "backreferences are not supported", 0],
+    ["\\8", "backreferences are not supported", 0],
+    ["(a)\\2", "backreferences are not supported", 3],
+    ["\\k<a>(?<a>x)", "backreferences are not supported", 0],
+    ["\\k", "backreferences are not supported", 0],
+    ["\\01", "legacy octal escape is not supported", 0],
+    ["\\0\\1", "backreferences are not supported", 2],
+    ["\\x", "invalid \\x escape", 0],
+    ["\\x4", "invalid \\x escape", 0],
+    ["\\xG1", "invalid \\x escape", 0],
+    ["\\u", "invalid \\u escape", 0],
+    ["\\u12", "invalid \\u escape", 0],
+    ["\\u00G1", "invalid \\u escape", 0],
+    ["\\u{41}", "invalid \\u escape", 0],
+    ["\\c", "invalid \\c escape", 0],
+    ["\\c1", "invalid \\c escape", 0],
+    ["\\c_", "invalid \\c escape", 0],
+    ["\\a", "unsupported escape '\\a'", 0],
+    ["\\p{L}", "unsupported escape '\\p'", 0],
+    ["\\_", "unsupported escape '\\_'", 0],
     ["(?=a)", "lookaround is not supported", 0],
     ["(?!a)", "lookaround is not supported", 0],
     ["a(?=b)", "lookaround is not supported", 1],
@@ -414,7 +619,79 @@ describe("parse: rejected syntax", () => {
   });
 });
 
+describe("parse: counted repetition limit", () => {
+  it("accepts every form with bounds of exactly 1 000", () => {
+    expect(parse("a{1000}").ast).toMatchObject({ type: "repeat", min: 1000, max: 1000 });
+    expect(parse("a{0,1000}").ast).toMatchObject({ type: "repeat", min: 0, max: 1000 });
+    expect(parse("a{1000,}").ast).toMatchObject({ type: "repeat", min: 1000, max: Infinity });
+    expect(parse("a{1000,1000}").ast).toMatchObject({ type: "repeat", min: 1000, max: 1000 });
+  });
+
+  it.each(["a{1001}", "a{0,1001}", "a{1001,}", "a{1001,1002}", "a{2,1001}"])(
+    "rejects %j at the opening brace, one above the bound",
+    (pattern) => {
+      expect(errorOf(pattern)).toMatchObject({ message: "repetition bound too large at position 1", position: 1 });
+    },
+  );
+});
+
 describe("parse: properties", () => {
+  it("parses every counted repetition within the bound with its bounds and laziness", () => {
+    fc.assert(
+      fc.property(fc.integer({ min: 0, max: 1000 }), fc.integer({ min: 0, max: 1000 }), (a, b) => {
+        const min = Math.min(a, b);
+        const max = Math.max(a, b);
+        expect(parse(`a{${min},${max}}`).ast).toMatchObject({ type: "repeat", min, max, greedy: true });
+        expect(parse(`a{${min},${max}}?`).ast).toMatchObject({ type: "repeat", min, max, greedy: false });
+      }),
+      { numRuns: 500 },
+    );
+  });
+
+  it("rejects every bound above 1 000 and every reversed pair", () => {
+    fc.assert(
+      fc.property(fc.integer({ min: 1001, max: 100_000 }), (n) => {
+        expect(errorOf(`a{${n}}`)).toMatchObject({ position: 1 });
+        expect(errorOf(`a{0,${n}}`)).toMatchObject({ position: 1 });
+      }),
+      { numRuns: 300 },
+    );
+    fc.assert(
+      fc.property(
+        fc.tuple(fc.integer({ min: 0, max: 1000 }), fc.integer({ min: 0, max: 1000 })).filter(([x, y]) => x > y),
+        ([x, y]) => {
+          expect(errorOf(`a{${x},${y}}`)).toMatchObject({ message: "numbers out of order in quantifier at position 1" });
+        },
+      ),
+      { numRuns: 300 },
+    );
+  });
+
+  it("accepts only patterns that the native RegExp accepts, over quantifier and escape tokens", () => {
+    const tokens = [
+      "a", "b", "(", ")", "(?:", "|", "*", "+", "?", "??", "*?", "{1}", "{2,}", "{0,3}", "{", "}", "[", "]", "[\\d]",
+      "[^\\W]", "\\d", "\\D", "\\w", "\\s", "\\S", "\\b", "\\B", "\\n", "\\0", "\\x41", "\\u0041", "\\cA", "\\1",
+      "\\k", "\\u", "-", "^", "$", ".", "\\",
+    ];
+    fc.assert(
+      fc.property(fc.array(fc.constantFrom(...tokens), { maxLength: 12 }).map((parts) => parts.join("")), (pattern) => {
+        let result: ReturnType<typeof parse>;
+        try {
+          result = parse(pattern);
+        } catch (error) {
+          expect(error).toBeInstanceOf(RegexSyntaxError);
+          if (!(error instanceof RegexSyntaxError)) throw error;
+          expect(error.position).toBeGreaterThanOrEqual(0);
+          expect(error.position).toBeLessThanOrEqual(pattern.length);
+          return;
+        }
+        expect(() => new RegExp(pattern)).not.toThrow();
+        assertSpans(result.ast, undefined, pattern.length);
+      }),
+      { numRuns: 2000 },
+    );
+  });
+
   const alphabet = ["a", "b", "(", ")", "[", "]", "|", "^", "$", ".", "-", "\\", "?", "<", ">", ":", "=", "!", "*", "+", "{", "}", "n", "_", "/", "1"];
 
   it("either returns valid spans or throws a positioned RegexSyntaxError, and accepted patterns are valid RegExp", () => {

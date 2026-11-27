@@ -1,6 +1,6 @@
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
-import { type CodeRange, contains, negate, normalize, type Ranges } from "../src/charclass.js";
+import { type CodeRange, contains, DIGIT, negate, normalize, type Ranges, SPACE, WORD } from "../src/charclass.js";
 
 const MAX = 0xffff;
 
@@ -114,6 +114,28 @@ describe("negate", () => {
         expect(contains(negate(normalized), code)).toBe(!contains(normalized, code));
       }),
     );
+  });
+});
+
+describe("predefined classes", () => {
+  it.each([
+    ["DIGIT", DIGIT, /\d/],
+    ["WORD", WORD, /\w/],
+    ["SPACE", SPACE, /\s/],
+  ])("%s agrees with the native class on every UTF-16 code unit", (_name, ranges, native) => {
+    const mismatches: number[] = [];
+    for (let code = 0; code <= MAX; code++) {
+      if (contains(ranges, code) !== native.test(String.fromCharCode(code))) mismatches.push(code);
+    }
+    expect(mismatches).toEqual([]);
+  });
+
+  it.each([
+    ["DIGIT", DIGIT],
+    ["WORD", WORD],
+    ["SPACE", SPACE],
+  ])("%s is already normalized", (_name, ranges) => {
+    expect(normalize(ranges)).toEqual(ranges);
   });
 });
 

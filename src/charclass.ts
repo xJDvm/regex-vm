@@ -7,6 +7,34 @@ export type Ranges = readonly CodeRange[];
 /** Largest UTF-16 code unit; the universe used by {@link negate}. */
 const MAX_CODE_UNIT = 0xffff;
 
+/** Code units matched by `\d`: the ASCII digits `0`–`9`. */
+export const DIGIT: Ranges = [[0x30, 0x39]];
+
+/** Code units matched by `\w`: ASCII letters, digits and underscore. */
+export const WORD: Ranges = [
+  [0x30, 0x39],
+  [0x41, 0x5a],
+  [0x5f, 0x5f],
+  [0x61, 0x7a],
+];
+
+/**
+ * Code units matched by `\s`: the JavaScript WhiteSpace and LineTerminator productions, that is
+ * `\t \n \v \f \r`, the `Zs` space separators, `U+FEFF`, `U+2028` and `U+2029`.
+ */
+export const SPACE: Ranges = [
+  [0x09, 0x0d],
+  [0x20, 0x20],
+  [0xa0, 0xa0],
+  [0x1680, 0x1680],
+  [0x2000, 0x200a],
+  [0x2028, 0x2029],
+  [0x202f, 0x202f],
+  [0x205f, 0x205f],
+  [0x3000, 0x3000],
+  [0xfeff, 0xfeff],
+];
+
 /**
  * Sorts ranges and merges overlapping or adjacent ones.
  *

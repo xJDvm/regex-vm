@@ -61,5 +61,17 @@ export interface Assert extends Span {
   readonly kind: AssertKind;
 }
 
+/**
+ * A quantified atom. `max` is `Infinity` for unbounded quantifiers. `greedy` is `false` for lazy quantifiers
+ * (a trailing `?`), which prefer fewer repetitions.
+ */
+export interface Repeat extends Span {
+  readonly type: "repeat";
+  readonly body: Node;
+  readonly min: number;
+  readonly max: number;
+  readonly greedy: boolean;
+}
+
 /** Any node of the pattern syntax tree. */
-export type Node = Empty | Char | Any | Class | Seq | Alt | Group | Assert;
+export type Node = Empty | Char | Any | Class | Seq | Alt | Group | Assert | Repeat;
