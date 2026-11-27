@@ -19,6 +19,7 @@
   ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
+    "bench": "npm run build && node bench/redos.mjs",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "test": "vitest run"
