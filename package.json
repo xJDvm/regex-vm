@@ -24,12 +24,15 @@
     "build": "tsc -p tsconfig.build.json",
     "bench": "npm run build && node bench/redos.mjs",
     "dev": "npm run dev -w playground",
-    "typecheck": "tsc --noEmit && tsc -p playground/tsconfig.json",
+    "e2e": "playwright test --trace off",
+    "typecheck": "tsc --noEmit && tsc -p playground/tsconfig.json && tsc -p tsconfig.e2e.json",
     "lint": "eslint .",
     "test": "vitest run"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
+    "@playwright/test": "1.63.0",
+    "@types/node": "22.20.7",
     "eslint": "10.14.0",
     "fast-check": "4.10.2",
     "typescript": "6.0.3",
