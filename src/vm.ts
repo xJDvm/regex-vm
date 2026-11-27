@@ -8,7 +8,7 @@ export interface RunStats {
 }
 
 /** A thread that waits at a consuming instruction or at `match`, together with its capture slots. */
-interface Thread {
+export interface Thread {
   readonly pc: number;
   readonly slots: Int32Array;
 }
@@ -20,7 +20,7 @@ interface Frame {
 }
 
 /** Set of integers in `[0, capacity)` with constant-time insertion, membership and clearing. */
-class SparseSet {
+export class SparseSet {
   private readonly dense: Int32Array;
   private readonly sparse: Int32Array;
   private size = 0;
@@ -51,7 +51,8 @@ class SparseSet {
 }
 
 /** The pcs visited at one input position, and the threads among them that consume input or match. */
-class ThreadList {
+export class ThreadList {
+  /** Program counters entered for this input position; each is entered at most once. */
   readonly visited: SparseSet;
   /** Threads in priority order: the first one has the highest priority. */
   readonly threads: Thread[] = [];
@@ -82,7 +83,7 @@ function isWordCode(code: number): boolean {
  * Runs the Pike VM: a Thompson NFA simulation that keeps one thread per program counter and input position, ordered
  * by priority, so that the first match found is the one a backtracking engine would report.
  */
-class PikeVm {
+export class PikeVm {
   private readonly insts: readonly Inst[];
   private readonly classes: readonly Ranges[];
   private readonly slotCount: number;
@@ -114,27 +115,57 @@ class PikeVm {
    * match.
    */
   search(start: number): Int32Array | null {
-    const size = this.insts.length;
     const n = this.input.length;
-    let current = new ThreadList(size);
-    let next = new ThreadList(size);
+    let current = this.newList();
+    let next = this.newList();
     let matched: Int32Array | null = null;
     for (let pos = start; pos <= n; pos++) {
-      if (matched === null) this.addThread(current, 0, this.initial, pos);
+      if (matched === null) this.seed(current, pos);
       if (matched !== null && current.threads.length === 0) break;
-      const code = pos < n ? this.input.charCodeAt(pos) : -1;
-      next.clear();
-      for (const thread of current.threads) {
-        const inst = this.instAt(thread.pc);
-        if (inst.op === "match") {
-          matched = thread.slots;
-          break;
-        }
-        if (this.consumes(inst, code)) this.addThread(next, thread.pc + 1, thread.slots, pos + 1);
-      }
+      matched = this.advance(current, next, pos, matched);
       [current, next] = [next, current];
     }
     return matched;
+  }
+
+  /** Creates an empty thread list sized for this program. */
+  newList(): ThreadList {
+    return new ThreadList(this.insts.length);
+  }
+
+  /**
+   * Adds the thread that starts the program, at the lowest priority of `list`, for input position `pos`.
+   *
+   * @param list - The list being filled for input position `pos`.
+   * @param pos - Input position where the new thread starts.
+   */
+  seed(list: ThreadList, pos: number): void {
+    this.addThread(list, 0, this.initial, pos);
+  }
+
+  /**
+   * Moves the threads of `current`, which sit at input position `pos`, past the instructions that consume the code
+   * unit at `pos`, filling `next` for position `pos + 1`. `current` is not modified.
+   *
+   * @param current - The threads at input position `pos`, in priority order.
+   * @param next - The list to fill for position `pos + 1`; it is cleared first.
+   * @param pos - The input position of `current`.
+   * @param matched - The match found so far, or `null`.
+   * @returns The slots of the latest match reached, which is `matched` when no thread of `current` matched.
+   */
+  advance(current: ThreadList, next: ThreadList, pos: number, matched: Int32Array | null): Int32Array | null {
+    const code = pos < this.input.length ? this.input.charCodeAt(pos) : -1;
+    let found = matched;
+    next.clear();
+    for (const thread of current.threads) {
+      const inst = this.instAt(thread.pc);
+      if (inst.op === "match") {
+        found = thread.slots;
+        break;
+      }
+      if (this.consumes(inst, code)) this.addThread(next, thread.pc + 1, thread.slots, pos + 1);
+    }
+    return found;
   }
 
   /**
