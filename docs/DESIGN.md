@@ -3,7 +3,7 @@
 ## Problem
 Backtracking regex engines (V8's Irregexp included) can take exponential time on patterns such as `(a+)+b`
 against `aaaa…a` (ReDoS). `regex-vm` is a regular-expression engine for JavaScript strings with a **guaranteed
-O(n·m) running time** (n = input length, m = program size): pattern → AST → bytecode → **Pike VM** (Thompson
+bound of (n+1)·m steps** (n = input length, m = program size; see invariant 2): pattern → AST → bytecode → **Pike VM** (Thompson
 NFA simulation with captures). It reproduces JavaScript's leftmost, priority-ordered match semantics, and is
 checked against V8 by differential fuzzing. A web playground animates the VM threads step by step.
 
@@ -96,7 +96,9 @@ Zero runtime dependencies. Dev only: `typescript`, `eslint` + `typescript-eslint
 
 ## Invariants
 1. Never throws anything but `RegexSyntaxError` from `compile`; `exec` never throws for any string input.
-2. Work per input position ≤ program size: `stats.steps ≤ (n + 1) · insts.length`.
+2. Work per input position ≤ program size: `stats.steps ≤ (n + 1) · insts.length`. The cost of each step is
+   proportional to the slots it copies (`Save`/`ClearCaps` copy the thread's slots), so the worst case is
+   O((n+1)·m·k), with k the number of slots and registers.
 3. For accepted patterns, `index`, `end` and `groups[0]` equal V8's `RegExp.prototype.exec`.
 4. Captures equal V8's, except for documented divergences on **empty iterations of nullable quantified bodies**
    (e.g. `(a*)*` vs `""`); the fuzzer skips capture comparison only when such a body exists, and the README lists
@@ -125,8 +127,8 @@ Zero runtime dependencies. Dev only: `typescript`, `eslint` + `typescript-eslint
 - Inputs: pattern, test string (≤ 200 chars), presets (email-ish, `(a+)+b` ReDoS, lazy vs greedy).
 - Panels: bytecode listing (active pcs highlighted per step); NFA graph as SVG — instructions laid out left to
   right in pc order, `Jmp`/`Split` edges drawn as arcs (priority edge solid, other dashed), active threads as
-  glowing nodes; input tape with the cursor; captures table; result vs native `RegExp` (native skipped for the
-  ReDoS preset with a note).
+  glowing nodes; input tape with the cursor; captures table; result vs native `RegExp` (native runs in a Worker with a
+  300 ms timeout; the panel shows "timed out" or "rejected" when applicable).
 - Controls: step, play/pause, speed, scrubber over the trace. Syntax errors show the caret at `position`.
 - Dev server on `127.0.0.1:5173`. All DOM text set with `textContent` (no `innerHTML` with user input).
 
