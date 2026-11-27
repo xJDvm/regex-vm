@@ -12,6 +12,8 @@ export type Inst =
   | { readonly op: "jmp"; readonly x: number }
   | { readonly op: "save"; readonly slot: number }
   | { readonly op: "clearCaps"; readonly lo: number; readonly hi: number }
+  | { readonly op: "mark"; readonly reg: number }
+  | { readonly op: "progress"; readonly reg: number }
   | { readonly op: "assertStart" }
   | { readonly op: "assertEnd" }
   | { readonly op: "wordB" }
@@ -26,6 +28,11 @@ export interface Program {
   readonly classes: readonly Ranges[];
   /** Number of capture slots: two per group, the whole match included (slots 0 and 1). */
   readonly slotCount: number;
+  /**
+   * Number of registers used by `mark` and `progress`. A register holds an input position in a thread's slot table,
+   * right after the capture slots; `run` does not report them.
+   */
+  readonly registerCount: number;
   /** Maps each group name to its 1-based capture index. */
   readonly groupNames: ReadonlyMap<string, number>;
 }
@@ -61,6 +68,10 @@ function describe(inst: Inst, program: Program): string {
       return `save ${inst.slot}`;
     case "clearCaps":
       return `clearCaps ${inst.lo}..${inst.hi}`;
+    case "mark":
+      return `mark r${inst.reg}`;
+    case "progress":
+      return `progress r${inst.reg}`;
     case "any":
     case "assertStart":
     case "assertEnd":

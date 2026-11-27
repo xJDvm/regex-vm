@@ -36,7 +36,7 @@ const LIMIT = 50_000;
  * `save 1; match`, every jump target is an instruction, and every slot, class and capture range is in bounds.
  */
 function expectWellFormed(program: Program): void {
-  const { insts, classes, slotCount } = program;
+  const { insts, classes, slotCount, registerCount } = program;
   expect(insts.length).toBeLessThanOrEqual(LIMIT);
   expect(insts[0]).toEqual({ op: "save", slot: 0 });
   expect(insts.slice(-2)).toEqual([{ op: "save", slot: 1 }, { op: "match" }]);
@@ -56,6 +56,10 @@ function expectWellFormed(program: Program): void {
         expect(inst.lo).toBeGreaterThanOrEqual(2);
         expect(inst.lo).toBeLessThanOrEqual(inst.hi);
         expect(inst.hi).toBeLessThan(slotCount);
+        break;
+      case "mark":
+      case "progress":
+        expect(inst.reg).toBeLessThan(registerCount);
         break;
       case "class":
         expect(inst.index).toBeLessThan(classes.length);
@@ -205,6 +209,33 @@ describe("compileAst: bytecode listings", () => {
       002  match"
     `);
     expect(listing("")).toBe(listing("a{0}"));
+  });
+
+  it("guards an optional copy of a nullable body with a mark and a progress check", () => {
+    expect(listing("(?:|a)?")).toMatchInlineSnapshot(`
+      "000  save 0
+      001  split 2, 7
+      002  mark r0
+      003  split 4, 5
+      004  jmp 6
+      005  char 'a'
+      006  progress r0
+      007  save 1
+      008  match"
+    `);
+  });
+
+  it("leaves mandatory copies and unguarded optional copies unchanged", () => {
+    expect(compile("(?:|a){2}").registerCount).toBe(0);
+    expect(compile("(?:a|){0,2}").registerCount).toBe(1);
+    expect(compile("a{0,2}").registerCount).toBe(0);
+    expect(compile("(?:|a)*").registerCount).toBe(0);
+  });
+
+  it("sizes each guarded optional copy as the body, its split, and the mark and progress pair", () => {
+    // The alternation `|a` is three instructions (split, jmp, char), and each copy adds a split, a mark and a
+    // progress: 3 + 3 = 6 per copy, plus the 3 wrapper instructions.
+    expect(compile("(?:|a){0,1000}").insts.length).toBe(6 * 1000 + 3);
   });
 
   it("sizes the slot table from the number of groups, the whole match included", () => {

@@ -133,3 +133,32 @@ describe("run: step bound", () => {
     expect(stats.steps).toBeLessThanOrEqual((input.length + 1) * program.insts.length);
   });
 });
+
+describe("run: optional iterations of nullable bodies must consume input", () => {
+  it("does not count an empty optional iteration, so the alternative that consumes wins", () => {
+    expect(slotsOf("(?:|a)?", "a")).toEqual([0, 1]);
+    expect(slotsOf("(?:|a)?b", "ab")).toEqual([0, 2]);
+  });
+
+  it("applies the rule to every optional copy of a counted repetition", () => {
+    expect(slotsOf("(?:|a){0,2}", "aa")).toEqual([0, 2]);
+    expect(slotsOf("x(?:|a){0,3}$", "xaa")).toEqual([0, 3]);
+  });
+
+  it("keeps laziness for optional copies whose body can match empty", () => {
+    expect(slotsOf("(?:|a){0,2}?", "aa")).toEqual([0, 0]);
+  });
+
+  it("allows empty mandatory copies", () => {
+    expect(slotsOf("(?:|a){2}", "a")).toEqual([0, 0]);
+  });
+
+  it("keeps the captures of the consuming optional iteration", () => {
+    expect(slotsOf("(a|){0,2}", "aa")).toEqual([0, 2, 1, 2]);
+  });
+
+  // Known divergence, kept visible: the VM drops the consuming iteration that V8 takes.
+  it.fails("matches the iteration of a nullable loop that consumes input", () => {
+    expect(slotsOf("(?:.*?)*", "aa")).toEqual([0, 2]);
+  });
+});

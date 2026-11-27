@@ -85,6 +85,7 @@ function isWordCode(code: number): boolean {
 class PikeVm {
   private readonly insts: readonly Inst[];
   private readonly classes: readonly Ranges[];
+  private readonly slotCount: number;
   private readonly initial: Int32Array;
   private readonly stack: Frame[] = [];
 
@@ -100,7 +101,8 @@ class PikeVm {
   ) {
     this.insts = program.insts;
     this.classes = program.classes;
-    this.initial = new Int32Array(program.slotCount).fill(-1);
+    this.slotCount = program.slotCount;
+    this.initial = new Int32Array(program.slotCount + program.registerCount).fill(-1);
   }
 
   /**
@@ -175,6 +177,15 @@ class PikeVm {
           stack.push({ pc: pc + 1, slots: copy });
           break;
         }
+        case "mark": {
+          const copy = slots.slice();
+          copy[this.slotCount + inst.reg] = pos;
+          stack.push({ pc: pc + 1, slots: copy });
+          break;
+        }
+        case "progress":
+          if (slots[this.slotCount + inst.reg] !== pos) stack.push({ pc: pc + 1, slots });
+          break;
         case "assertStart":
           if (pos === 0) stack.push({ pc: pc + 1, slots });
           break;
@@ -238,5 +249,6 @@ class PikeVm {
  *   match. Slot `2k` and `2k + 1` are the start and end of group `k`; group 0 is the whole match.
  */
 export function run(program: Program, input: string, start: number, stats?: RunStats): Int32Array | null {
-  return new PikeVm(program, input, stats).search(start);
+  const slots = new PikeVm(program, input, stats).search(start);
+  return slots === null ? null : slots.slice(0, program.slotCount);
 }

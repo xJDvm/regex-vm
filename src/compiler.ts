@@ -54,6 +54,32 @@ function unionSlots(nodes: readonly Node[]): readonly [number, number] | null {
 }
 
 /**
+ * Whether `node` can match the empty string. Assertions match empty, and a repetition with a zero minimum does too.
+ *
+ * @param node - The subtree to inspect.
+ * @returns `true` when some way of matching `node` consumes no input.
+ */
+function canMatchEmpty(node: Node): boolean {
+  switch (node.type) {
+    case "empty":
+    case "assert":
+      return true;
+    case "char":
+    case "any":
+    case "class":
+      return false;
+    case "seq":
+      return node.items.every(canMatchEmpty);
+    case "alt":
+      return node.alts.some(canMatchEmpty);
+    case "group":
+      return canMatchEmpty(node.body);
+    case "repeat":
+      return node.min === 0 || canMatchEmpty(node.body);
+  }
+}
+
+/**
  * Computes the exact number of instructions {@link compileAst} emits for `node`, capped at {@link SIZE_CAP}.
  *
  * Counted repetitions are sized from their bounds, so nothing is expanded to find out how large a program would
@@ -82,12 +108,16 @@ function measure(node: Node): number {
   }
 }
 
-/** Size of a repetition: `min` mandatory copies, then either a loop or `max - min` optional copies. */
+/**
+ * Size of a repetition: `min` mandatory copies, then either a loop or `max - min` optional copies. An optional copy
+ * whose body can match empty also carries the `mark` and `progress` pair.
+ */
 function measureRepeat(node: Repeat): number {
   const copy = measure(node.body) + (captureSlots(node.body) === null ? 0 : 1);
   const mandatory = node.min * copy;
   if (node.max === Infinity) return capped(mandatory + copy + 2);
-  return capped(mandatory + (node.max - node.min) * (copy + 1));
+  const guard = canMatchEmpty(node.body) ? 2 : 0;
+  return capped(mandatory + (node.max - node.min) * (copy + guard + 1));
 }
 
 /** Clamps a size to {@link SIZE_CAP}. */
@@ -102,6 +132,8 @@ function capped(size: number): number {
 class Emitter {
   readonly insts: Inst[] = [];
   readonly classes: CodeRange[][] = [];
+  /** Number of registers allocated so far; each repetition that needs one takes the next. */
+  registerCount = 0;
 
   /** Emits the instructions of `node`, leaving control at the next instruction. */
   compile(node: Node): void {
@@ -166,6 +198,11 @@ class Emitter {
   /**
    * Emits a quantifier. Every copy of the body starts by clearing the captures of the groups inside it, as JavaScript
    * does on each iteration.
+   *
+   * An optional copy (one beyond `min`) whose body can match empty must consume input to count, as in ECMAScript's
+   * RepeatMatcher. Such a copy records its start position in a register and fails when it ends where it started.
+   * Unbounded loops rely on their head, which is already visited at the start position, to drop an empty iteration.
+   * That covers the cases the differential test reaches only partly; see the known divergence in `test/vm.test.ts`.
    */
   private compileRepeat(node: Repeat): void {
     const slots = captureSlots(node.body);
@@ -178,10 +215,17 @@ class Emitter {
       this.compileLoop(node.greedy, iteration);
       return;
     }
+    const register = node.max > node.min && canMatchEmpty(node.body) ? this.registerCount++ : null;
     const exits: number[] = [];
     for (let i = node.min; i < node.max; i++) {
       exits.push(this.hole());
-      iteration();
+      if (register === null) {
+        iteration();
+      } else {
+        this.insts.push({ op: "mark", reg: register });
+        iteration();
+        this.insts.push({ op: "progress", reg: register });
+      }
     }
     const end = this.insts.length;
     for (const pc of exits) this.fill(pc, this.choice(node.greedy, pc + 1, end));
@@ -251,6 +295,7 @@ export function compileAst(parsed: ParseResult): Program {
     insts: emitter.insts,
     classes: emitter.classes,
     slotCount: 2 * (parsed.groupCount + 1),
+    registerCount: emitter.registerCount,
     groupNames: parsed.groupNames,
   };
 }
