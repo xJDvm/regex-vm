@@ -260,6 +260,236 @@ td {
   color: var(--ok);
 }
 
+.bytecode-row.active {
+  background: var(--accent-soft);
+  color: var(--text);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+
+.controls button,
+.speed select {
+  font: inherit;
+  font-size: 0.875rem;
+  color: var(--text);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px 14px;
+  cursor: pointer;
+  transition: border-color 0.15s, background-color 0.15s;
+}
+
+.controls button:hover:not(:disabled),
+.speed select:hover {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.controls button:disabled {
+  color: var(--muted);
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.controls button[aria-pressed="true"] {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.speed {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.875rem;
+  color: var(--muted);
+}
+
+.speed select {
+  padding: 5px 8px;
+}
+
+.step-pos {
+  font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  font-size: 0.875rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.scrubber-label {
+  display: block;
+  margin-top: 14px;
+}
+
+input[type="range"] {
+  padding: 0;
+  background: transparent;
+  border: 0;
+  accent-color: var(--accent);
+}
+
+input[type="range"]:disabled {
+  opacity: 0.5;
+}
+
+.tape {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 14px;
+  padding: 12px;
+  background: var(--code-bg);
+  border-radius: 8px;
+  font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  font-size: 0.9rem;
+}
+
+.cell {
+  min-width: 1.6em;
+  padding: 3px 5px;
+  text-align: center;
+  white-space: pre;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+}
+
+.cell.end {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.cell.cursor {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--bg);
+  font-weight: 600;
+}
+
+.step-status {
+  margin-top: 10px;
+  font-size: 0.875rem;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.truncated {
+  margin-top: 10px;
+  font-size: 0.875rem;
+  color: var(--warn);
+  overflow-wrap: anywhere;
+}
+
+.threads-title {
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  margin-top: 18px;
+  margin-bottom: 8px;
+}
+
+.threads {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  font-size: 0.875rem;
+}
+
+.thread {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 4px 12px;
+  padding: 6px 10px;
+  white-space: pre;
+  overflow-x: auto;
+  background: var(--code-bg);
+  border-radius: 6px;
+  color: var(--accent);
+}
+
+.slots {
+  color: var(--muted);
+}
+
+.graph {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  height: auto;
+  background: var(--code-bg);
+  border-radius: 8px;
+}
+
+.graph .node rect {
+  fill: var(--panel);
+  stroke: var(--border);
+  stroke-width: 1.5;
+  transition: stroke 0.15s, fill 0.15s;
+}
+
+.graph .node text {
+  font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  pointer-events: none;
+}
+
+.graph .node .pc {
+  font-size: 11px;
+  fill: var(--muted);
+}
+
+.graph .node .op {
+  font-size: 14px;
+  fill: var(--ok);
+}
+
+.graph .node.active rect {
+  fill: var(--accent-soft);
+  stroke: var(--accent);
+  stroke-width: 2;
+  filter: drop-shadow(0 0 6px var(--accent));
+}
+
+.graph .edge {
+  fill: none;
+  stroke: var(--muted);
+  stroke-width: 1.5;
+  opacity: 0.7;
+}
+
+.graph .edge-alternative {
+  stroke-dasharray: 6 5;
+}
+
+.graph .edge.active {
+  stroke: var(--accent);
+  opacity: 1;
+}
+
+.graph .arrow-head {
+  fill: var(--muted);
+}
+
+.legend {
+  margin-top: 10px;
+  font-size: 0.8rem;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
 @media (max-width: 860px) {
   .layout,
   .results {

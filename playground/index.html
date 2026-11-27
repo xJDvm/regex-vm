@@ -46,6 +46,44 @@
 
         <section id="error" class="panel error wide" data-testid="error" hidden></section>
 
+        <section class="panel wide" aria-labelledby="execution-title">
+          <h2 id="execution-title">Execution</h2>
+          <div class="controls">
+            <button id="step" data-testid="step" type="button">Step</button>
+            <button id="play" data-testid="play" type="button" aria-pressed="false">Play</button>
+            <label class="speed">
+              <span>Speed</span>
+              <select id="speed" data-testid="speed">
+                <option value="0.5">0.5×</option>
+                <option value="1" selected>1×</option>
+                <option value="2">2×</option>
+                <option value="4">4×</option>
+              </select>
+            </label>
+            <span id="step-pos" class="step-pos" data-testid="step-pos"></span>
+          </div>
+          <label class="scrubber-label">
+            <span class="label">Position in the trace</span>
+            <input id="scrubber" data-testid="scrubber" type="range" min="0" max="0" value="0" step="1" />
+          </label>
+          <div id="tape" class="tape" data-testid="tape" aria-label="Input, with the cursor of the current step"></div>
+          <p id="step-status" class="step-status" data-testid="step-status"></p>
+          <p id="truncated" class="truncated" data-testid="truncated" hidden>
+            The trace stopped early: the search needs more steps than the trace provides.
+          </p>
+          <h3 class="threads-title">Active threads <span id="thread-count" data-testid="thread-count"></span></h3>
+          <ol id="active-thread" class="threads" data-testid="active-thread"></ol>
+        </section>
+
+        <section class="panel wide" aria-labelledby="graph-title">
+          <h2 id="graph-title">NFA graph</h2>
+          <svg id="graph" data-testid="graph" class="graph" role="img" aria-label="Instructions as boxes, with arcs for split and jmp targets"></svg>
+          <p class="legend">
+            Solid arc: <code>split</code> priority or <code>jmp</code>. Dashed arc: the other <code>split</code> branch.
+            Highlighted boxes and arcs belong to the threads of the current step.
+          </p>
+        </section>
+
         <section class="panel" aria-labelledby="bytecode-title">
           <h2 id="bytecode-title">Bytecode</h2>
           <ol id="bytecode" class="bytecode"></ol>

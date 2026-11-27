@@ -71,6 +71,8 @@ describe("analyze", () => {
       ok: true,
       bytecode: expect.any(Array),
       captures: [],
+      steps: expect.any(Array),
+      graph: expect.any(Object),
       library: { kind: "none" },
       native: { kind: "none" },
       verdict: "agree",
@@ -82,6 +84,29 @@ describe("analyze", () => {
     if (!result.ok) throw new Error("expected a match");
     expect(result.library).toEqual({ kind: "match", match: { index: 0, end: 0, groups: [""] } });
     expect(result.verdict).toBe("agree");
+  });
+
+  it("traces every input position of the maximum-length input without truncation", () => {
+    const result = analyze("(a|b)*c", "ab".repeat(MAX_INPUT_LENGTH / 2), false);
+    if (!result.ok) throw new Error("expected a result");
+    expect(result.steps.map((step) => step.pos)).toEqual(
+      Array.from({ length: MAX_INPUT_LENGTH + 1 }, (_, pos) => pos),
+    );
+    expect(result.steps.some((step) => step.truncated === true)).toBe(false);
+  });
+
+  it("ends the trace with the match that the library reports", () => {
+    const result = analyze("(?<year>\\d{4})-(\\d{2})", "on 2026-11 ok", false);
+    if (!result.ok || result.library.kind !== "match") throw new Error("expected a match");
+    const last = result.steps.at(-1);
+    expect(last?.matched?.slice(0, 2)).toEqual([result.library.match.index, result.library.match.end]);
+  });
+
+  it("lays out the graph of the compiled program", () => {
+    const result = analyze("a|b", "b", false);
+    if (!result.ok) throw new Error("expected a result");
+    expect(result.graph.nodes).toHaveLength(result.bytecode.length);
+    expect(result.graph.edges).toHaveLength(3);
   });
 
   it("skips the native engine when asked, and says the comparison is unchecked", () => {

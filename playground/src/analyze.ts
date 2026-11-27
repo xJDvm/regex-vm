@@ -1,4 +1,13 @@
-import { compile, disassemble, type Match, type Regex, RegexSyntaxError } from "../../src/index.ts";
+import {
+  compile,
+  disassemble,
+  type Match,
+  type Regex,
+  RegexSyntaxError,
+  type Step,
+  trace,
+} from "../../src/index.ts";
+import { type GraphLayout, layoutGraph } from "./graph.ts";
 
 /** Longest test string the playground accepts, in UTF-16 code units. */
 export const MAX_INPUT_LENGTH = 200;
@@ -40,6 +49,10 @@ export type Analysis =
       /** One entry per instruction, in program-counter order. */
       bytecode: string[];
       captures: CaptureRow[];
+      /** The Pike VM state at each input position, in order; the last one may be `truncated`. */
+      steps: Step[];
+      /** Positioned NFA graph of the program. */
+      graph: GraphLayout;
       library: LibraryOutcome;
       native: NativeOutcome;
       verdict: Verdict;
@@ -76,6 +89,8 @@ export function analyze(pattern: string, input: string, skipNative: boolean): An
     ok: true,
     bytecode: disassemble(regex.program).split("\n"),
     captures: matched === null ? [] : captureRows(matched, regex),
+    steps: [...trace(regex.program, input)],
+    graph: layoutGraph(regex.program),
     library,
     native,
     verdict: verdictOf(library, native),
