@@ -17,10 +17,14 @@
   "files": [
     "dist"
   ],
+  "workspaces": [
+    "playground"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "bench": "npm run build && node bench/redos.mjs",
-    "typecheck": "tsc --noEmit",
+    "dev": "npm run dev -w playground",
+    "typecheck": "tsc --noEmit && tsc -p playground/tsconfig.json",
     "lint": "eslint .",
     "test": "vitest run"
   },
