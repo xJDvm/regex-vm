@@ -21,7 +21,9 @@ export interface Match {
 /**
  * A compiled regular expression. Obtain one with {@link compile}.
  *
- * Matching takes time linear in the input length times the program size, whatever the pattern.
+ * Matching enters at most (n + 1)·m program counters, where n is the input length and m the program size. Each step
+ * also copies the capture and register slots it writes, so the worst case is O((n + 1)·m·k), with k the number of
+ * slots and registers.
  */
 export class Regex {
   /** The pattern text this expression was compiled from. */

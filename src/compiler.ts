@@ -202,7 +202,9 @@ class Emitter {
    * An optional copy (one beyond `min`) whose body can match empty must consume input to count, as in ECMAScript's
    * RepeatMatcher. Such a copy records its start position in a register and fails when it ends where it started.
    * Unbounded loops rely on their head, which is already visited at the start position, to drop an empty iteration.
-   * That covers the cases the differential test reaches only partly; see the known divergence in `test/vm.test.ts`.
+   * The differential test (`test/differential.test.ts`) leaves out two cases: captures of trees with a nullable
+   * quantified body, and match spans of unbounded loops with a nullable body, which it checks only for existence. The
+   * open divergence on such a loop, `(?:.*?)*` against `"aa"`, is pinned as `it.fails` in `test/vm.test.ts`.
    */
   private compileRepeat(node: Repeat): void {
     const slots = captureSlots(node.body);

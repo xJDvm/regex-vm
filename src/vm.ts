@@ -238,8 +238,10 @@ class PikeVm {
 /**
  * Searches `input` for the leftmost, highest-priority match of `program` that starts at or after `start`.
  *
- * Runs in O(n·m) time, where n is the input length and m the number of instructions: each program counter is entered
- * at most once per input position.
+ * Enters at most (n + 1)·m program counters, where n is the input length and m the number of instructions: each
+ * program counter is entered at most once per input position. Each entry that writes a capture or register copies the
+ * slot array, so a step costs time proportional to the k slots and registers copied, and the worst case is
+ * O((n + 1)·m·k).
  *
  * @param program - A program produced by the compiler.
  * @param input - The string to search.
